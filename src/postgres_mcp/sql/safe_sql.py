@@ -763,14 +763,14 @@ class SafeSqlDriver(SqlDriver):
         "tsm_system_time",
         "unaccent",
         "uuid-ossp",
-        # Common extensions
+        # Common extensions (excluding file_fdw: arbitrary filesystem read)
         "adminpack",
         "amcheck",
         "bloom",
         "citext",
         "dict_int",
         "dict_xsyn",
-        "file_fdw",
+        # "file_fdw",  # REMOVED: allows reading arbitrary server filesystem files
         "intagg",
         "isn",
         "lo",
@@ -784,7 +784,7 @@ class SafeSqlDriver(SqlDriver):
         "seg",
         "spi",
         "sslinfo",
-        # Foreign data wrappers
+        # Foreign data wrappers (excluding file_fdw which can read arbitrary files)
         "postgres_fdw",
         "dblink",
         "mysql_fdw",
@@ -806,7 +806,7 @@ class SafeSqlDriver(SqlDriver):
         "pg_wait_sampling",
         "plv8",
         "pg_stat_monitor",
-        "pg_cron",
+        # "pg_cron",  # REMOVED: allows scheduling arbitrary SQL execution
         "pglogical",
         "pgq",
         "pgpool_adm",
@@ -821,13 +821,13 @@ class SafeSqlDriver(SqlDriver):
         "pg_stat_kcache",
         "wal2json",
         "pg_repack",
-        # Programming languages
+        # Programming languages (trusted only — untrusted variants allow arbitrary OS code execution)
         "plperl",
-        "plperlu",
-        "plpython3u",
-        "plpython",
+        # "plperlu",  # REMOVED: untrusted, allows arbitrary OS command execution
+        # "plpython3u",  # REMOVED: untrusted, allows arbitrary OS command execution
+        # "plpython",  # REMOVED: untrusted, allows arbitrary OS command execution
         "pltcl",
-        "pltclu",
+        # "pltclu",  # REMOVED: untrusted, allows arbitrary OS command execution
         "pljava",
         "plrust",
         # AWS RDS extensions
