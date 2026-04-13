@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 from dataclasses import dataclass
 from typing import Any
 from typing import override
@@ -17,6 +18,9 @@ from ..sql import IndexDefinition
 from ..sql import SqlDriver
 from .index_opt_base import IndexRecommendation
 from .index_opt_base import IndexTuningBase
+
+# Environment variable to explicitly opt in to sending database metadata to external LLM APIs
+_LLM_DATA_SHARING_ENV = "MCP_ALLOW_LLM_DATA_SHARING"
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +65,23 @@ class LLMOptimizerTool(IndexTuningBase):
         max_no_progress_attempts: int = 5,
         pareto_alpha: float = 2.0,
     ):
+        # Require explicit opt-in before sending database metadata to external APIs
+        if not os.environ.get(_LLM_DATA_SHARING_ENV):
+            raise ValueError(
+                f"LLM-based index optimization sends database schema information (table names, column names, "
+                f"query patterns, and execution plans) to the OpenAI API. "
+                f"Set the {_LLM_DATA_SHARING_ENV}=true environment variable to acknowledge and enable this."
+            )
+
         super().__init__(sql_driver)
         self.sql_driver = sql_driver
         self.max_no_progress_attempts = max_no_progress_attempts
         self.pareto_alpha = pareto_alpha
         logger.info("Initialized LLMOptimizerTool with max_no_progress_attempts=%d", max_no_progress_attempts)
+        logger.warning(
+            "LLM optimizer enabled: database schema metadata (table names, column names, query patterns) "
+            "will be sent to the OpenAI API for index recommendations."
+        )
 
     def score(self, execution_cost: float, index_size: float) -> float:
         return math.log(execution_cost) + self.pareto_alpha * math.log(index_size)
