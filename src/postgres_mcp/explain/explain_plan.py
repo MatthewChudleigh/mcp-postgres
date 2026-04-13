@@ -7,6 +7,10 @@ import re
 from typing import TYPE_CHECKING
 from typing import Any
 
+import pglast
+from pglast.ast import RawStmt
+from pglast.ast import SelectStmt
+
 from ..artifacts import ErrorResult
 from ..artifacts import ExplainPlanArtifact
 from ..sql import IndexDefinition
@@ -18,6 +22,29 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from ..sql.sql_driver import SqlDriver
+
+
+def _validate_single_query(sql: str) -> None:
+    """Validate that SQL contains exactly one statement and is a SELECT-like query.
+
+    Prevents multi-statement injection when the query is concatenated into
+    EXPLAIN statements.
+    """
+    try:
+        parsed = pglast.parse_sql(sql)
+    except pglast.parser.ParseError as e:
+        raise ValueError(f"Failed to parse SQL query: {e}") from e
+
+    if not parsed:
+        raise ValueError("Empty SQL query")
+
+    if len(parsed) > 1:
+        raise ValueError("Only single SQL statements are allowed for EXPLAIN. Multiple statements detected.")
+
+    stmt = parsed[0]
+    inner = stmt.stmt if isinstance(stmt, RawStmt) else stmt
+    if not isinstance(inner, SelectStmt):
+        raise ValueError(f"Only SELECT statements can be explained. Got: {type(inner).__name__}")
 
 
 class ExplainPlanTool:
@@ -152,6 +179,7 @@ class ExplainPlanTool:
 
     async def _run_explain_query(self, query: str, analyze: bool = False, generic_plan: bool = False) -> ExplainPlanArtifact | ErrorResult:
         try:
+            _validate_single_query(query)
             explain_options = ["FORMAT JSON"]
             if analyze:
                 explain_options.append("ANALYZE")
@@ -201,6 +229,7 @@ class ExplainPlanTool:
             The explain plan as a dictionary
         """
         try:
+            _validate_single_query(query_text)
             # Create the indexes query
             create_indexes_query = "SELECT hypopg_reset();"
             if len(indexes) > 0:
