@@ -68,6 +68,7 @@ from pglast.ast import TableSampleClause
 from pglast.ast import TargetEntry
 from pglast.ast import TypeCast
 from pglast.ast import TypeName
+from pglast.ast import VacuumRelation
 from pglast.ast import VacuumStmt
 from pglast.ast import VariableShowStmt
 from pglast.ast import WindowClause
@@ -741,6 +742,7 @@ class SafeSqlDriver(SqlDriver):
         # Additional expression types
         ScalarArrayOpExpr,  # ARRAY[...] @> or <@ operators
         NotifyStmt,  # NOTIFY command
+        VacuumRelation,  # Target relation in VACUUM/ANALYZE statements
     }
 
     ALLOWED_EXTENSIONS: ClassVar[set[str]] = {
@@ -911,6 +913,12 @@ class SafeSqlDriver(SqlDriver):
             for option in node.options or []:
                 if isinstance(option, DefElem) and option.defname == "analyze":
                     raise ValueError("EXPLAIN ANALYZE is not supported")
+
+        # Reject VACUUM FULL — it acquires ACCESS EXCLUSIVE lock and rewrites the table
+        if isinstance(node, VacuumStmt):
+            for option in node.options or []:
+                if isinstance(option, DefElem) and option.defname == "full":
+                    raise ValueError("VACUUM FULL is not allowed in restricted mode. Use VACUUM (without FULL) or ANALYZE instead.")
 
         # Reject CREATE EXTENSION statements
         if isinstance(node, CreateExtensionStmt):
