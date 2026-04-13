@@ -268,5 +268,5 @@ class SqlDriver:
                 except Exception as rollback_error:
                     logger.error(f"Error rolling back transaction: {rollback_error}")
 
-            logger.error(f"Error executing query ({query}): {e}")
+            logger.error(f"Error executing query: {obfuscate_password(str(e))}")
             raise e

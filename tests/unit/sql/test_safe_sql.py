@@ -131,7 +131,7 @@ async def test_select_with_malicious_comment(safe_driver):
     """
     with pytest.raises(
         ValueError,
-        match="Error validating query",
+        match="Only single SQL statements are allowed",
     ):
         await safe_driver.execute_query(query)
 
@@ -194,7 +194,7 @@ async def test_select_with_commit(safe_driver):
     """
     with pytest.raises(
         ValueError,
-        match="Error validating query",
+        match="Only single SQL statements are allowed",
     ):
         await safe_driver.execute_query(query)
 
@@ -232,7 +232,7 @@ async def test_begin_transaction_blocked(safe_driver):
     """
     with pytest.raises(
         ValueError,
-        match="Error validating query",
+        match="Only single SQL statements are allowed",
     ):
         await safe_driver.execute_query(query)
 

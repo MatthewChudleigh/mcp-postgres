@@ -958,10 +958,13 @@ class SafeSqlDriver(SqlDriver):
         try:
             # Parse the SQL using pglast
             parsed = pglast.parse_sql(query)
-            # Pretty print the parsed SQL for debugging
-            # print("Parsed SQL:")
-            # import pprint
-            # pprint.pprint(parsed)
+
+            # Reject multi-statement queries to prevent statement chaining attacks
+            if len(parsed) > 1:
+                raise ValueError(
+                    "Only single SQL statements are allowed in restricted mode. "
+                    "Multiple statements separated by semicolons are not permitted."
+                )
 
             # Validate each statement
             try:
