@@ -76,7 +76,7 @@ async def test_index_initialization():
     )
     assert idx.table == "users"
     assert idx.columns == ("name", "email")
-    assert idx.definition == "CREATE INDEX crystaldba_idx_users_name_email_2 ON users USING btree (name, email)"
+    assert idx.definition == 'CREATE INDEX crystaldba_idx_users_name_email_2 ON "users" USING btree ("name", "email")'
 
 
 @pytest.mark.asyncio
