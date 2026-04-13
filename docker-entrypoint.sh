@@ -23,7 +23,7 @@ replace_localhost() {
     # Replace localhost with Docker host
     if [[ -n "$docker_host" ]]; then
         local new_str="${input_str/localhost/$docker_host}"
-        echo "  Remapping: $input_str --> $new_str" >&2
+        echo "  Remapping localhost to $docker_host in connection string" >&2
         echo "$new_str"
         return 0
     fi
@@ -41,7 +41,7 @@ shift 1
 # Process remaining command-line arguments for postgres:// or postgresql:// URLs that contain localhost
 for arg in "$@"; do
     if [[ "$arg" == *"postgres"*"://"*"localhost"* ]]; then
-        echo "Found localhost in database connection: $arg" >&2
+        echo "Found localhost in database connection argument, remapping..." >&2
         new_arg=$(replace_localhost "$arg")
         if [[ $? -eq 0 ]]; then
             processed_args+=("$new_arg")
@@ -55,7 +55,7 @@ done
 
 # Check and replace localhost in DATABASE_URI if it exists
 if [[ -n "$DATABASE_URI" && "$DATABASE_URI" == *"postgres"*"://"*"localhost"* ]]; then
-    echo "Found localhost in DATABASE_URI: $DATABASE_URI" >&2
+    echo "Found localhost in DATABASE_URI, remapping..." >&2
     new_uri=$(replace_localhost "$DATABASE_URI")
     if [[ $? -eq 0 ]]; then
         export DATABASE_URI="$new_uri"
@@ -89,8 +89,7 @@ if [[ "$has_sse" == true ]] && [[ "$has_sse_host" == false ]]; then
 fi
 
 echo "----------------" >&2
-echo "Executing command:" >&2
-echo "${processed_args[@]}" >&2
+echo "Executing postgres-mcp server..." >&2
 echo "----------------" >&2
 
 # Execute the command with the processed arguments
