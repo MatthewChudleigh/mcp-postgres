@@ -55,7 +55,7 @@ class AccessMode(str, Enum):
 
 # Global variables
 db_connection = DbConnPool()
-current_access_mode = AccessMode.UNRESTRICTED
+current_access_mode = AccessMode.RESTRICTED
 shutdown_in_progress = False
 
 
@@ -562,8 +562,8 @@ async def main():
         "--access-mode",
         type=str,
         choices=[mode.value for mode in AccessMode],
-        default=AccessMode.UNRESTRICTED.value,
-        help="Set SQL access mode: unrestricted (unrestricted) or restricted (read-only with protections)",
+        default=AccessMode.RESTRICTED.value,
+        help="Set SQL access mode: restricted (read-only with protections, default) or unrestricted (full access, use with caution)",
     )
     parser.add_argument(
         "--transport",
