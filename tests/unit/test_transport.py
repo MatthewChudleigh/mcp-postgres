@@ -17,6 +17,7 @@ async def test_transport_argument_parsing(transport):
             "postgres_mcp",
             "postgresql://user:password@localhost/db",
             f"--transport={transport}",
+            "--no-auth",
         ]
 
         with (
@@ -58,6 +59,7 @@ async def test_streamable_http_host_port_arguments():
             "--transport=streamable-http",
             "--streamable-http-host=0.0.0.0",
             "--streamable-http-port=9000",
+            "--no-auth",
         ]
 
         with (
@@ -87,6 +89,7 @@ async def test_sse_host_port_arguments():
             "--transport=sse",
             "--sse-host=0.0.0.0",
             "--sse-port=8080",
+            "--no-auth",
         ]
 
         with (

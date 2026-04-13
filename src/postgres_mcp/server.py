@@ -3,6 +3,7 @@ import argparse
 import asyncio
 import logging
 import os
+import secrets
 import signal
 import sys
 from enum import Enum
@@ -554,6 +555,35 @@ async def get_top_queries(
         return format_error_response(str(e))
 
 
+async def _run_with_bearer_auth(app, auth_token: str, settings) -> None:
+    """Wrap a Starlette app with bearer token auth middleware and run it."""
+    import uvicorn
+    from starlette.middleware import Middleware
+    from starlette.middleware.base import BaseHTTPMiddleware
+    from starlette.requests import Request
+    from starlette.responses import JSONResponse
+
+    class BearerAuthMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next):
+            auth_header = request.headers.get("authorization", "")
+            if auth_header.startswith("Bearer "):
+                token = auth_header[7:]
+                if secrets.compare_digest(token, auth_token):
+                    return await call_next(request)
+            return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
+    app.add_middleware(BearerAuthMiddleware)
+
+    config = uvicorn.Config(
+        app,
+        host=settings.host,
+        port=settings.port,
+        log_level=settings.log_level.lower(),
+    )
+    server = uvicorn.Server(config)
+    await server.serve()
+
+
 async def main():
     # Parse command line arguments
     parser = argparse.ArgumentParser(description="PostgreSQL MCP Server")
@@ -595,6 +625,20 @@ async def main():
         type=int,
         default=8000,
         help="Port for streamable HTTP server (default: 8000)",
+    )
+    parser.add_argument(
+        "--auth-token",
+        type=str,
+        default=None,
+        help="Bearer token for authenticating network transport clients (SSE, streamable-http). "
+        "Can also be set via MCP_AUTH_TOKEN environment variable. "
+        "Required when using network transports unless --no-auth is specified.",
+    )
+    parser.add_argument(
+        "--no-auth",
+        action="store_true",
+        default=False,
+        help="Disable authentication for network transports. WARNING: Only use in trusted networks.",
     )
 
     args = parser.parse_args()
@@ -656,17 +700,42 @@ async def main():
         logger.warning("Signal handling not supported on Windows")
         pass
 
+    # Configure authentication for network transports
+    auth_token = None
+    if args.transport in ("sse", "streamable-http"):
+        auth_token = os.environ.get("MCP_AUTH_TOKEN", args.auth_token)
+        if auth_token:
+            logger.info("Bearer token authentication enabled for network transport")
+        elif not args.no_auth:
+            raise ValueError(
+                "Authentication is required for network transports (SSE, streamable-http). "
+                "Provide a token via --auth-token or MCP_AUTH_TOKEN environment variable, "
+                "or use --no-auth to explicitly disable authentication (not recommended)."
+            )
+        else:
+            logger.warning(
+                "WARNING: Network transport running WITHOUT authentication. "
+                "Any client that can reach this port can execute queries. "
+                "Only use in trusted networks."
+            )
+
     # Run the server with the selected transport (always async)
     if args.transport == "stdio":
         await mcp.run_stdio_async()
     elif args.transport == "sse":
         mcp.settings.host = args.sse_host
         mcp.settings.port = args.sse_port
-        await mcp.run_sse_async()
+        if auth_token:
+            await _run_with_bearer_auth(mcp.sse_app(), auth_token, mcp.settings)
+        else:
+            await mcp.run_sse_async()
     elif args.transport == "streamable-http":
         mcp.settings.host = args.streamable_http_host
         mcp.settings.port = args.streamable_http_port
-        await mcp.run_streamable_http_async()
+        if auth_token:
+            await _run_with_bearer_auth(mcp.streamable_http_app(), auth_token, mcp.settings)
+        else:
+            await mcp.run_streamable_http_async()
 
 
 async def shutdown(sig=None):
