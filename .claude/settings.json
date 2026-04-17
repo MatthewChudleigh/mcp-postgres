@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:spec.modelcontextprotocol.io)",
+      "WebSearch",
+      "Bash(uv run *)",
+      "Bash(uv pip install *)",
+      "Bash(uv build *)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

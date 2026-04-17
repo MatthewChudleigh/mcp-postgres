@@ -1,0 +1,20 @@
+{
+  "name": "mcp-postgres",
+  "owner": {
+    "name": "Matthew Chudleigh",
+    "url": "https://github.com/MatthewChudleigh"
+  },
+  "plugins": [
+    {
+      "name": "mcp-postgres",
+      "source": {
+        "source": "github",
+        "repo": "MatthewChudleigh/mcp-postgres"
+      },
+      "description": "Read-only Postgres MCP server with slash commands for querying and schema discovery.",
+      "version": "0.3.0",
+      "category": "database",
+      "keywords": ["postgres", "database"]
+    }
+  ]
+}
