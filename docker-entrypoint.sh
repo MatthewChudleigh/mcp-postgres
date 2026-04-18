@@ -54,11 +54,11 @@ for arg in "$@"; do
 done
 
 # Check and replace localhost in DATABASE_URI if it exists
-if [[ -n "$DATABASE_URI" && "$DATABASE_URI" == *"postgres"*"://"*"localhost"* ]]; then
-    echo "Found localhost in DATABASE_URI, remapping..." >&2
-    new_uri=$(replace_localhost "$DATABASE_URI")
+if [[ -n "$POSTGRES_DATABASE_URI" && "$POSTGRES_DATABASE_URI" == *"postgres"*"://"*"localhost"* ]]; then
+    echo "Found localhost in POSTGRES_DATABASE_URI, remapping..." >&2
+    new_uri=$(replace_localhost "$POSTGRES_DATABASE_URI")
     if [[ $? -eq 0 ]]; then
-        export DATABASE_URI="$new_uri"
+        export POSTGRES_DATABASE_URI="$new_uri"
     fi
 fi
 

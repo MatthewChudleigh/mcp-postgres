@@ -136,12 +136,12 @@ You will now edit the `mcpServers` section of the configuration file.
         "-i",
         "--rm",
         "-e",
-        "DATABASE_URI",
+        "POSTGRES_DATABASE_URI",
         "crystaldba/postgres-mcp",
         "--access-mode=unrestricted"
       ],
       "env": {
-        "DATABASE_URI": "postgresql://username:password@localhost:5432/dbname"
+        "POSTGRES_DATABASE_URI": "postgresql://username:password@localhost:5432/dbname"
       }
     }
   }
@@ -165,7 +165,7 @@ The Postgres MCP Pro Docker image will automatically remap the hostname `localho
         "--access-mode=unrestricted"
       ],
       "env": {
-        "DATABASE_URI": "postgresql://username:password@localhost:5432/dbname"
+        "POSTGRES_DATABASE_URI": "postgresql://username:password@localhost:5432/dbname"
       }
     }
   }
@@ -184,7 +184,7 @@ The Postgres MCP Pro Docker image will automatically remap the hostname `localho
         "--access-mode=unrestricted"
       ],
       "env": {
-        "DATABASE_URI": "postgresql://username:password@localhost:5432/dbname"
+        "POSTGRES_DATABASE_URI": "postgresql://username:password@localhost:5432/dbname"
       }
     }
   }
@@ -205,7 +205,7 @@ The Postgres MCP Pro Docker image will automatically remap the hostname `localho
         "--access-mode=unrestricted"
       ],
       "env": {
-        "DATABASE_URI": "postgresql://username:password@localhost:5432/dbname"
+        "POSTGRES_DATABASE_URI": "postgresql://username:password@localhost:5432/dbname"
       }
     }
   }
@@ -245,7 +245,7 @@ For example, with Docker run:
 
 ```bash
 docker run -p 8000:8000 \
-  -e DATABASE_URI=postgresql://username:password@localhost:5432/dbname \
+  -e POSTGRES_DATABASE_URI=postgresql://username:password@localhost:5432/dbname \
   crystaldba/postgres-mcp --access-mode=unrestricted --transport=sse
 ```
 

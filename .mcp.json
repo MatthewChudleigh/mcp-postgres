@@ -4,7 +4,7 @@
       "command": "uv",
       "args": ["run", "--directory", ".", "postgres-mcp", "--access-mode", "restricted"],
       "env": {
-        "DATABASE_URI": "${DATABASE_URI:-}"
+        "POSTGRES_DATABASE_URI": "${POSTGRES_DATABASE_URI:-}"
       }
     }
   }
