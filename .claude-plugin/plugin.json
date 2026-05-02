@@ -1,7 +1,7 @@
 {
   "name": "mcp-postgres",
-  "version": "0.6.0",
-  "description": "Read-only MCP server for Postgres — safely explore schemas and query databases.",
+  "version": "0.6.1",
+  "description": "Read-only MCP server for Postgres - safely explore schemas and query databases.",
   "author": {
     "name": "Crystal DBA",
     "url": "https://github.com/crystaldba/postgres-mcp"
@@ -14,5 +14,9 @@
   ],
   "homepage": "https://github.com/MatthewChudleigh/mcp-postgres",
   "license": "MIT",
-  "keywords": ["postgres", "database", "readonly"]
+  "keywords": [
+    "postgres",
+    "database",
+    "readonly"
+  ]
 }
