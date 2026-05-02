@@ -218,6 +218,36 @@ The Postgres MCP Pro Docker image will automatically remap the hostname `localho
 Replace `postgresql://...` with your [Postgres database connection URI](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING-URIS).
 
 
+##### Multiple Database Connections
+
+In addition to the single `POSTGRES_DATABASE_URI`, you can configure a named map of connections via `POSTGRES_DATABASES`. This lets a single MCP server target multiple databases — either different databases on one Postgres server or different servers entirely.
+
+`POSTGRES_DATABASES` is a JSON object mapping a connection name to a connection URI:
+
+```json
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "uvx",
+      "args": ["postgres-mcp", "--access-mode=restricted"],
+      "env": {
+        "POSTGRES_DATABASE_URI": "postgresql://user:pw@host/main",
+        "POSTGRES_DATABASES": "{\"prod\":\"postgresql://user:pw@host/prod\",\"analytics\":\"postgresql://user:pw@host2/analytics\"}"
+      }
+    }
+  }
+}
+```
+
+Behavior:
+
+- `POSTGRES_DATABASE_URI` (or the positional CLI argument) is registered as the `default` connection and is eagerly connected at startup.
+- Entries in `POSTGRES_DATABASES` are registered by name and connect lazily on first use.
+- If `POSTGRES_DATABASES` contains exactly one entry and `POSTGRES_DATABASE_URI` is not set, that single entry becomes the `default`.
+- Every tool accepts an optional `connection` argument naming the target — for example `connection: "analytics"`. When omitted, tools target the `default` connection, so existing single-database setups are unchanged.
+- A `list_connections` tool is exposed so the model can discover the configured names.
+
+
 ##### Access Mode
 
 Postgres MCP Pro supports multiple *access modes* to give you control over the operations that the AI agent can perform on the database:

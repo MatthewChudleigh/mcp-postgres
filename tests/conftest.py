@@ -1,4 +1,5 @@
 import asyncio
+import sys
 from typing import Generator
 
 import pytest
@@ -14,6 +15,9 @@ load_dotenv()
 @pytest.fixture(scope="session")
 def event_loop_policy():
     """Create and return a custom event loop policy for tests."""
+    if sys.platform == "win32":
+        # psycopg's async pool is incompatible with the default ProactorEventLoop on Windows.
+        return asyncio.WindowsSelectorEventLoopPolicy()
     return asyncio.DefaultEventLoopPolicy()
 
 

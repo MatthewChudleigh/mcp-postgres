@@ -1,6 +1,7 @@
 # ruff: noqa: B008
 import argparse
 import asyncio
+import json
 import logging
 import os
 import secrets
@@ -55,14 +56,55 @@ class AccessMode(str, Enum):
 
 
 # Global variables
+DEFAULT_CONNECTION = "default"
+# Map of connection name -> connection URL. Pools are created lazily on first use.
+connection_urls: dict[str, str] = {}
+# Pool for the default connection. Kept as a module attribute so tests can patch it.
 db_connection = DbConnPool()
+# Pools for additional named connections (does NOT include the default — that's `db_connection`).
+extra_db_connections: dict[str, DbConnPool] = {}
 current_access_mode = AccessMode.RESTRICTED
 shutdown_in_progress = False
 
 
-async def get_sql_driver() -> Union[SqlDriver, SafeSqlDriver]:
-    """Get the appropriate SQL driver based on the current access mode."""
-    base_driver = SqlDriver(conn=db_connection)
+def list_connection_names() -> list[str]:
+    return sorted(connection_urls.keys())
+
+
+def _all_pools() -> dict[str, DbConnPool]:
+    pools: dict[str, DbConnPool] = dict(extra_db_connections)
+    if DEFAULT_CONNECTION in connection_urls:
+        pools[DEFAULT_CONNECTION] = db_connection
+    return pools
+
+
+async def get_sql_driver(connection: str = DEFAULT_CONNECTION) -> Union[SqlDriver, SafeSqlDriver]:
+    """Get the appropriate SQL driver for the named connection based on the current access mode."""
+    if connection == DEFAULT_CONNECTION:
+        pool = db_connection
+        url = connection_urls.get(DEFAULT_CONNECTION)
+    else:
+        if connection not in connection_urls:
+            raise ValueError(
+                f"Unknown connection '{connection}'. Configured connections: {list_connection_names()}"
+            )
+        pool = extra_db_connections.get(connection)
+        if pool is None:
+            pool = DbConnPool()
+            extra_db_connections[connection] = pool
+        url = connection_urls[connection]
+
+    # Lazy-connect: only open the pool the first time it's used.
+    if url is not None and not pool.is_valid:
+        try:
+            await pool.pool_connect(url)
+        except Exception as e:
+            logger.warning(
+                f"Could not connect to '{connection}': {obfuscate_password(str(e))}",
+            )
+            raise
+
+    base_driver = SqlDriver(conn=pool)
 
     if current_access_mode == AccessMode.RESTRICTED:
         logger.debug("Using SafeSqlDriver with restrictions (RESTRICTED mode)")
@@ -70,6 +112,16 @@ async def get_sql_driver() -> Union[SqlDriver, SafeSqlDriver]:
     else:
         logger.debug("Using unrestricted SqlDriver (UNRESTRICTED mode)")
         return base_driver
+
+
+def _connection_field() -> Any:
+    return Field(
+        description=(
+            "Name of the configured database connection to use. "
+            "Use 'list_connections' to see available connections. Defaults to 'default'."
+        ),
+        default=DEFAULT_CONNECTION,
+    )
 
 
 def format_text_response(text: Any) -> ResponseType:
@@ -83,16 +135,27 @@ def format_error_response(error: str) -> ResponseType:
 
 
 @mcp.tool(
+    description="List the names of all configured database connections that tools can target via the 'connection' argument.",
+    annotations=ToolAnnotations(
+        title="List Connections",
+        readOnlyHint=True,
+    ),
+)
+async def list_connections() -> ResponseType:
+    return format_text_response({"default": DEFAULT_CONNECTION, "connections": list_connection_names()})
+
+
+@mcp.tool(
     description="List all schemas in the database",
     annotations=ToolAnnotations(
         title="List Schemas",
         readOnlyHint=True,
     ),
 )
-async def list_schemas() -> ResponseType:
+async def list_schemas(connection: str = _connection_field()) -> ResponseType:
     """List all schemas in the database."""
     try:
-        sql_driver = await get_sql_driver()
+        sql_driver = await get_sql_driver(connection)
         rows = await sql_driver.execute_query(
             """
             SELECT
@@ -124,10 +187,11 @@ async def list_schemas() -> ResponseType:
 async def list_objects(
     schema_name: str = Field(description="Schema name"),
     object_type: str = Field(description="Object type: 'table', 'view', 'sequence', or 'extension'", default="table"),
+    connection: str = _connection_field(),
 ) -> ResponseType:
     """List objects of a given type in a schema."""
     try:
-        sql_driver = await get_sql_driver()
+        sql_driver = await get_sql_driver(connection)
 
         if object_type in ("table", "view"):
             table_type = "BASE TABLE" if object_type == "table" else "VIEW"
@@ -199,10 +263,11 @@ async def get_object_details(
     schema_name: str = Field(description="Schema name"),
     object_name: str = Field(description="Object name"),
     object_type: str = Field(description="Object type: 'table', 'view', 'sequence', or 'extension'", default="table"),
+    connection: str = _connection_field(),
 ) -> ResponseType:
     """Get detailed information about a database object."""
     try:
-        sql_driver = await get_sql_driver()
+        sql_driver = await get_sql_driver(connection)
 
         if object_type in ("table", "view"):
             # Get columns
@@ -354,6 +419,7 @@ Examples: [
 If there is no hypothetical index, you can pass an empty list.""",
         default=[],
     ),
+    connection: str = _connection_field(),
 ) -> ResponseType:
     """
     Explains the execution plan for a SQL query.
@@ -364,7 +430,7 @@ If there is no hypothetical index, you can pass an empty list.""",
         hypothetical_indexes: Optional list of indexes to simulate
     """
     try:
-        sql_driver = await get_sql_driver()
+        sql_driver = await get_sql_driver(connection)
         explain_tool = ExplainPlanTool(sql_driver=sql_driver)
         result: ExplainPlanArtifact | ErrorResult | None = None
 
@@ -415,10 +481,11 @@ If there is no hypothetical index, you can pass an empty list.""",
 # Query function declaration without the decorator - we'll add it dynamically based on access mode
 async def execute_sql(
     sql: str = Field(description="SQL to run", default="all"),
+    connection: str = _connection_field(),
 ) -> ResponseType:
     """Executes a SQL query against the database."""
     try:
-        sql_driver = await get_sql_driver()
+        sql_driver = await get_sql_driver(connection)
         rows = await sql_driver.execute_query(sql)  # type: ignore
         if rows is None:
             return format_text_response("No results")
@@ -439,10 +506,11 @@ async def execute_sql(
 async def analyze_workload_indexes(
     max_index_size_mb: int = Field(description="Max index size in MB", default=10000),
     method: Literal["dta", "llm"] = Field(description="Method to use for analysis", default="dta"),
+    connection: str = _connection_field(),
 ) -> ResponseType:
     """Analyze frequently executed queries in the database and recommend optimal indexes."""
     try:
-        sql_driver = await get_sql_driver()
+        sql_driver = await get_sql_driver(connection)
         if method == "dta":
             index_tuning = DatabaseTuningAdvisor(sql_driver)
         else:
@@ -467,6 +535,7 @@ async def analyze_query_indexes(
     queries: list[str] = Field(description="List of Query strings to analyze"),
     max_index_size_mb: int = Field(description="Max index size in MB", default=10000),
     method: Literal["dta", "llm"] = Field(description="Method to use for analysis", default="dta"),
+    connection: str = _connection_field(),
 ) -> ResponseType:
     """Analyze a list of SQL queries and recommend optimal indexes."""
     if len(queries) == 0:
@@ -475,7 +544,7 @@ async def analyze_query_indexes(
         return format_error_response(f"Please provide a list of up to {MAX_NUM_INDEX_TUNING_QUERIES} queries to analyze.")
 
     try:
-        sql_driver = await get_sql_driver()
+        sql_driver = await get_sql_driver(connection)
         if method == "dta":
             index_tuning = DatabaseTuningAdvisor(sql_driver)
         else:
@@ -509,6 +578,7 @@ async def analyze_db_health(
         description=f"Optional. Valid values are: {', '.join(sorted([t.value for t in HealthType]))}.",
         default="all",
     ),
+    connection: str = _connection_field(),
 ) -> ResponseType:
     """Analyze database health for specified components.
 
@@ -516,7 +586,7 @@ async def analyze_db_health(
         health_type: Comma-separated list of health check types to perform.
                     Valid values: index, connection, vacuum, sequence, replication, buffer, constraint, all
     """
-    health_tool = DatabaseHealthTool(await get_sql_driver())
+    health_tool = DatabaseHealthTool(await get_sql_driver(connection))
     result = await health_tool.health(health_type=health_type)
     return format_text_response(result)
 
@@ -536,9 +606,10 @@ async def get_top_queries(
         default="resources",
     ),
     limit: int = Field(description="Number of queries to return when ranking based on mean_time or total_time", default=10),
+    connection: str = _connection_field(),
 ) -> ResponseType:
     try:
-        sql_driver = await get_sql_driver()
+        sql_driver = await get_sql_driver(connection)
         top_queries_tool = TopQueriesCalc(sql_driver=sql_driver)
 
         if sort_by == "resources":
@@ -669,25 +740,51 @@ async def main():
 
     logger.info(f"Starting PostgreSQL MCP Server in {current_access_mode.upper()} mode")
 
-    # Get database URL from environment variable or command line
-    database_url = os.environ.get("POSTGRES_DATABASE_URI", args.database_url)
+    # Build the connection registry.
+    # POSTGRES_DATABASES, if set, is a JSON map of name -> connection URL, e.g.
+    #     {"prod": "postgres://...", "analytics": "postgres://..."}
+    # POSTGRES_DATABASE_URI (or the positional CLI arg) is the 'default' connection.
+    default_url = os.environ.get("POSTGRES_DATABASE_URI", args.database_url)
+    if default_url:
+        connection_urls[DEFAULT_CONNECTION] = default_url
 
-    if not database_url:
+    databases_json = os.environ.get("POSTGRES_DATABASES")
+    if databases_json:
+        try:
+            parsed = json.loads(databases_json)
+        except json.JSONDecodeError as e:
+            raise ValueError(f"POSTGRES_DATABASES is not valid JSON: {e}") from e
+        if not isinstance(parsed, dict) or not all(isinstance(v, str) for v in parsed.values()):
+            raise ValueError("POSTGRES_DATABASES must be a JSON object of name -> connection URL strings.")
+        for name, url in parsed.items():
+            if name in connection_urls and connection_urls[name] != url:
+                logger.info(f"Connection '{name}' from POSTGRES_DATABASES overrides existing entry")
+            connection_urls[name] = url
+        # If no explicit default but exactly one entry, treat it as the default.
+        if DEFAULT_CONNECTION not in connection_urls and len(parsed) == 1:
+            (only_name,) = parsed.keys()
+            connection_urls[DEFAULT_CONNECTION] = parsed[only_name]
+
+    if not connection_urls:
         raise ValueError(
-            "Error: No database URL provided. Please specify via 'POSTGRES_DATABASE_URI' environment variable or command-line argument.",
+            "Error: No database URL provided. Set 'POSTGRES_DATABASE_URI', "
+            "or 'POSTGRES_DATABASES' (JSON map of name->url), or pass a URL on the command line.",
         )
 
-    # Initialize database connection pool
-    try:
-        await db_connection.pool_connect(database_url)
-        logger.info("Successfully connected to database and initialized connection pool")
-    except Exception as e:
-        logger.warning(
-            f"Could not connect to database: {obfuscate_password(str(e))}",
-        )
-        logger.warning(
-            "The MCP server will start but database operations will fail until a valid connection is established.",
-        )
+    logger.info(f"Configured connections: {list_connection_names()} (extras open lazily on first use)")
+
+    # Eagerly connect the default pool to surface bad URIs early; named extras stay lazy.
+    if DEFAULT_CONNECTION in connection_urls:
+        try:
+            await db_connection.pool_connect(connection_urls[DEFAULT_CONNECTION])
+            logger.info("Successfully connected to default database and initialized connection pool")
+        except Exception as e:
+            logger.warning(
+                f"Could not connect to default database: {obfuscate_password(str(e))}",
+            )
+            logger.warning(
+                "The MCP server will start but database operations will fail until a valid connection is established.",
+            )
 
     # Set up proper shutdown handling
     try:
@@ -752,12 +849,13 @@ async def shutdown(sig=None):
     if sig:
         logger.info(f"Received exit signal {sig.name}")
 
-    # Close database connections
-    try:
-        await db_connection.close()
-        logger.info("Closed database connections")
-    except Exception as e:
-        logger.error(f"Error closing database connections: {e}")
+    # Close all open connection pools
+    for name, pool in list(_all_pools().items()):
+        try:
+            await pool.close()
+            logger.info(f"Closed connection pool '{name}'")
+        except Exception as e:
+            logger.error(f"Error closing connection pool '{name}': {e}")
 
     # Exit with appropriate status code
     sys.exit(128 + sig if sig is not None else 0)

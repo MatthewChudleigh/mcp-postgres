@@ -2,9 +2,10 @@
   "mcpServers": {
     "postgres": {
       "command": "uv",
-      "args": ["run", "--directory", "${CLAUDE_PLUGIN_ROOT}", "postgres-mcp", "--access-mode", "restricted"],
+      "args": ["run", "--directory", "${CLAUDE_PLUGIN_ROOT:-.}", "postgres-mcp", "--access-mode", "restricted"],
       "env": {
-        "POSTGRES_DATABASE_URI": "${POSTGRES_DATABASE_URI:-}"
+        "POSTGRES_DATABASE_URI": "${POSTGRES_DATABASE_URI:-}",
+        "POSTGRES_DATABASES": "${POSTGRES_DATABASES:-}"
       }
     }
   }
