@@ -12,7 +12,7 @@
         "repo": "MatthewChudleigh/mcp-postgres"
       },
       "description": "Read-only Postgres MCP server with slash commands for querying and schema discovery.",
-      "version": "0.6.3",
+      "version": "0.7.0",
       "category": "database",
       "keywords": [
         "postgres",

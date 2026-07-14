@@ -23,6 +23,7 @@ from postgres_mcp.index.dta_calc import DatabaseTuningAdvisor
 
 from .artifacts import ErrorResult
 from .artifacts import ExplainPlanArtifact
+from .config_file import load_connection_file
 from .database_health import DatabaseHealthTool
 from .database_health import HealthType
 from .explain import ExplainPlanTool
@@ -740,13 +741,21 @@ async def main():
 
     logger.info(f"Starting PostgreSQL MCP Server in {current_access_mode.upper()} mode")
 
-    # Build the connection registry.
-    # POSTGRES_DATABASES, if set, is a JSON map of name -> connection URL, e.g.
-    #     {"prod": "postgres://...", "analytics": "postgres://..."}
-    # POSTGRES_DATABASE_URI (or the positional CLI arg) is the 'default' connection.
+    # Build the connection registry from three sources, in increasing precedence:
+    #   1. POSTGRES_CONFIG_FILE - a JSON/YAML file mapping name -> connection URL.
+    #   2. POSTGRES_DATABASES    - a JSON map of name -> connection URL, e.g.
+    #          {"prod": "postgres://...", "analytics": "postgres://..."}
+    #   3. POSTGRES_DATABASE_URI - the 'default' connection (or the positional CLI arg).
+    # Names that collide resolve in that order, so an env var beats the config file.
     default_url = os.environ.get("POSTGRES_DATABASE_URI", args.database_url)
-    if default_url:
-        connection_urls[DEFAULT_CONNECTION] = default_url
+
+    file_default: str | None = None
+    config_file = os.environ.get("POSTGRES_CONFIG_FILE")
+    if config_file:
+        conn_file = load_connection_file(config_file)
+        connection_urls.update(conn_file.connections)
+        file_default = conn_file.default
+        logger.info(f"Loaded {len(conn_file.connections)} connection(s) from POSTGRES_CONFIG_FILE")
 
     databases_json = os.environ.get("POSTGRES_DATABASES")
     if databases_json:
@@ -760,15 +769,26 @@ async def main():
             if name in connection_urls and connection_urls[name] != url:
                 logger.info(f"Connection '{name}' from POSTGRES_DATABASES overrides existing entry")
             connection_urls[name] = url
-        # If no explicit default but exactly one entry, treat it as the default.
-        if DEFAULT_CONNECTION not in connection_urls and len(parsed) == 1:
+
+    # Resolve the default connection: env/CLI URI first, then the config file's
+    # `default`, then a lone entry from either the config file or POSTGRES_DATABASES.
+    if default_url:
+        connection_urls[DEFAULT_CONNECTION] = default_url
+    elif DEFAULT_CONNECTION not in connection_urls:
+        if file_default:
+            connection_urls[DEFAULT_CONNECTION] = connection_urls[file_default]
+        elif databases_json and len(parsed) == 1:
             (only_name,) = parsed.keys()
             connection_urls[DEFAULT_CONNECTION] = parsed[only_name]
+        elif config_file and len(conn_file.connections) == 1:
+            (only_name,) = conn_file.connections.keys()
+            connection_urls[DEFAULT_CONNECTION] = conn_file.connections[only_name]
 
     if not connection_urls:
         raise ValueError(
             "Error: No database URL provided. Set 'POSTGRES_DATABASE_URI', "
-            "or 'POSTGRES_DATABASES' (JSON map of name->url), or pass a URL on the command line.",
+            "'POSTGRES_DATABASES' (JSON map of name->url), 'POSTGRES_CONFIG_FILE' "
+            "(path to a JSON/YAML connections file), or pass a URL on the command line.",
         )
 
     logger.info(f"Configured connections: {list_connection_names()} (extras open lazily on first use)")

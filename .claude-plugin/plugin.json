@@ -1,6 +1,6 @@
 {
   "name": "mcp-postgres",
-  "version": "0.6.3",
+  "version": "0.7.0",
   "description": "Read-only MCP server for Postgres - safely explore schemas and query databases.",
   "author": {
     "name": "Crystal DBA",

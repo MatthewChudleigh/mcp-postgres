@@ -1,0 +1,21 @@
+# Example connections file for mcp-postgres.
+#
+# Point the server at this file with a single env var:
+#   POSTGRES_CONFIG_FILE=/path/to/connections.yaml
+#
+# The file may be YAML (shown here) or JSON — JSON is valid YAML, so both parse
+# the same way. Keep the real file out of source control (it holds credentials)
+# and reference secrets from your OS environment where you can.
+
+# Which connection tools use when no "connection" argument is given.
+# Optional. If omitted and the file has exactly one connection, that one is the
+# default. Overridden by POSTGRES_DATABASE_URI when that is set.
+default: prod
+
+connections:
+  prod: postgresql://reader:change-me@db1.prod.internal.example.com:5432/appdb
+
+  analytics: postgresql://reader:change-me@warehouse.prod.internal.example.com:5432/warehouse
+
+  # Any valid Postgres connection URI works, including query parameters:
+  # local: postgresql://postgres@localhost:5432/postgres?sslmode=disable

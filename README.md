@@ -248,6 +248,42 @@ Behavior:
 - A `list_connections` tool is exposed so the model can discover the configured names.
 
 
+##### Connections Config File
+
+For more than one connection, cramming an escaped JSON string into `POSTGRES_DATABASES` gets awkward. Instead, set `POSTGRES_CONFIG_FILE` to the path of a JSON or YAML file. It's a real file — comments allowed (in YAML), no JSON-in-a-string escaping — and it can live outside your committed MCP client config (keep it out of source control; it holds credentials).
+
+```json
+{
+  "mcpServers": {
+    "postgres": {
+      "command": "uvx",
+      "args": ["postgres-mcp", "--access-mode=restricted"],
+      "env": {
+        "POSTGRES_CONFIG_FILE": "~/.config/mcp-postgres/connections.yaml"
+      }
+    }
+  }
+}
+```
+
+The file maps connection names to Postgres connection URIs, with an optional `default`:
+
+```yaml
+default: prod
+connections:
+  prod: postgresql://user:pw@host/prod
+  analytics: postgresql://user:pw@host2/analytics
+```
+
+See [`examples/connections.example.yaml`](examples/connections.example.yaml) for a fuller example.
+
+Behavior:
+
+- The file may be JSON or YAML (JSON is valid YAML, so both parse the same way). A leading `~` and relative paths are resolved at startup, and any parse/validation error is reported then — not on first query.
+- The optional `default` key names the default connection. If it's omitted and the file has exactly one connection, that one becomes the default.
+- All three sources — `POSTGRES_DATABASE_URI`, `POSTGRES_DATABASES`, and `POSTGRES_CONFIG_FILE` — can be combined. When a connection name appears in more than one, the env vars win over the config file (precedence: `POSTGRES_DATABASE_URI` > `POSTGRES_DATABASES` > `POSTGRES_CONFIG_FILE`).
+
+
 ##### Access Mode
 
 Postgres MCP Pro supports multiple *access modes* to give you control over the operations that the AI agent can perform on the database:
