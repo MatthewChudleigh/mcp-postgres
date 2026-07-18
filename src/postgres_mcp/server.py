@@ -68,6 +68,27 @@ current_access_mode = AccessMode.RESTRICTED
 shutdown_in_progress = False
 
 
+def clean_env(name: str) -> str | None:
+    """Read an env var, treating empty strings and unexpanded ``${VAR}`` placeholders as unset.
+
+    Some launchers (e.g. Claude Code plugin ``.mcp.json`` files) substitute
+    ``${VAR}`` references with the literal string ``${VAR}`` when the variable is
+    not defined in the environment, rather than omitting the entry. Returning
+    ``None`` for those cases keeps an unset optional var from being mistaken for a
+    real value (e.g. a stray ``POSTGRES_DATABASES="${POSTGRES_DATABASES}"`` being
+    parsed as JSON).
+    """
+    value = os.environ.get(name)
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    if stripped.startswith("${") and stripped.endswith("}"):
+        return None
+    return value
+
+
 def list_connection_names() -> list[str]:
     return sorted(connection_urls.keys())
 
@@ -747,17 +768,17 @@ async def main():
     #          {"prod": "postgres://...", "analytics": "postgres://..."}
     #   3. POSTGRES_DATABASE_URI - the 'default' connection (or the positional CLI arg).
     # Names that collide resolve in that order, so an env var beats the config file.
-    default_url = os.environ.get("POSTGRES_DATABASE_URI", args.database_url)
+    default_url = clean_env("POSTGRES_DATABASE_URI") or args.database_url
 
     file_default: str | None = None
-    config_file = os.environ.get("POSTGRES_CONFIG_FILE")
+    config_file = clean_env("POSTGRES_CONFIG_FILE")
     if config_file:
         conn_file = load_connection_file(config_file)
         connection_urls.update(conn_file.connections)
         file_default = conn_file.default
         logger.info(f"Loaded {len(conn_file.connections)} connection(s) from POSTGRES_CONFIG_FILE")
 
-    databases_json = os.environ.get("POSTGRES_DATABASES")
+    databases_json = clean_env("POSTGRES_DATABASES")
     if databases_json:
         try:
             parsed = json.loads(databases_json)
