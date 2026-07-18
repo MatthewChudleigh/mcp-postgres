@@ -1,10 +1,9 @@
 """Loader for the optional POSTGRES_CONFIG_FILE connections file.
 
-A single ``POSTGRES_CONFIG_FILE`` env var may point at a JSON or YAML file that
-describes multiple named connections, as a cleaner alternative to cramming a
-JSON map into the ``POSTGRES_DATABASES`` env var. The file is a real file, so it
-allows comments (in YAML), avoids JSON-in-a-string escaping, and can live
-outside your committed MCP client config.
+A single ``POSTGRES_CONFIG_FILE`` env var points at a JSON or YAML file that
+describes one or more named connections. Being a real file, it allows comments
+(in YAML), avoids JSON-in-a-string escaping, and can live outside your committed
+MCP client config.
 
 The file shape is::
 
@@ -17,7 +16,6 @@ Every failure raises a clear, path-qualified error so misconfiguration surfaces
 at startup rather than on the first query.
 """
 
-import json
 import os
 from dataclasses import dataclass
 from dataclasses import field

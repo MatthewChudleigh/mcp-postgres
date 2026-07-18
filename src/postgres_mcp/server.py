@@ -1,7 +1,6 @@
 # ruff: noqa: B008
 import argparse
 import asyncio
-import json
 import logging
 import os
 import secrets
@@ -74,9 +73,9 @@ def clean_env(name: str) -> str | None:
     Some launchers (e.g. Claude Code plugin ``.mcp.json`` files) substitute
     ``${VAR}`` references with the literal string ``${VAR}`` when the variable is
     not defined in the environment, rather than omitting the entry. Returning
-    ``None`` for those cases keeps an unset optional var from being mistaken for a
-    real value (e.g. a stray ``POSTGRES_DATABASES="${POSTGRES_DATABASES}"`` being
-    parsed as JSON).
+    ``None`` for those cases keeps an unset ``POSTGRES_CONFIG_FILE`` from being
+    mistaken for a real path (e.g. a stray
+    ``POSTGRES_CONFIG_FILE="${POSTGRES_CONFIG_FILE}"``).
     """
     value = os.environ.get(name)
     if value is None:
@@ -762,13 +761,11 @@ async def main():
 
     logger.info(f"Starting PostgreSQL MCP Server in {current_access_mode.upper()} mode")
 
-    # Build the connection registry from three sources, in increasing precedence:
+    # Build the connection registry from two sources, in increasing precedence:
     #   1. POSTGRES_CONFIG_FILE - a JSON/YAML file mapping name -> connection URL.
-    #   2. POSTGRES_DATABASES    - a JSON map of name -> connection URL, e.g.
-    #          {"prod": "postgres://...", "analytics": "postgres://..."}
-    #   3. POSTGRES_DATABASE_URI - the 'default' connection (or the positional CLI arg).
-    # Names that collide resolve in that order, so an env var beats the config file.
-    default_url = clean_env("POSTGRES_DATABASE_URI") or args.database_url
+    #   2. the positional CLI URL - the 'default' connection.
+    # A URL passed on the command line beats a same-named entry from the file.
+    default_url = args.database_url
 
     file_default: str | None = None
     config_file = clean_env("POSTGRES_CONFIG_FILE")
@@ -778,38 +775,21 @@ async def main():
         file_default = conn_file.default
         logger.info(f"Loaded {len(conn_file.connections)} connection(s) from POSTGRES_CONFIG_FILE")
 
-    databases_json = clean_env("POSTGRES_DATABASES")
-    if databases_json:
-        try:
-            parsed = json.loads(databases_json)
-        except json.JSONDecodeError as e:
-            raise ValueError(f"POSTGRES_DATABASES is not valid JSON: {e}") from e
-        if not isinstance(parsed, dict) or not all(isinstance(v, str) for v in parsed.values()):
-            raise ValueError("POSTGRES_DATABASES must be a JSON object of name -> connection URL strings.")
-        for name, url in parsed.items():
-            if name in connection_urls and connection_urls[name] != url:
-                logger.info(f"Connection '{name}' from POSTGRES_DATABASES overrides existing entry")
-            connection_urls[name] = url
-
-    # Resolve the default connection: env/CLI URI first, then the config file's
-    # `default`, then a lone entry from either the config file or POSTGRES_DATABASES.
+    # Resolve the default connection: the CLI URL first, then the config file's
+    # `default`, then a lone entry from the config file.
     if default_url:
         connection_urls[DEFAULT_CONNECTION] = default_url
     elif DEFAULT_CONNECTION not in connection_urls:
         if file_default:
             connection_urls[DEFAULT_CONNECTION] = connection_urls[file_default]
-        elif databases_json and len(parsed) == 1:
-            (only_name,) = parsed.keys()
-            connection_urls[DEFAULT_CONNECTION] = parsed[only_name]
         elif config_file and len(conn_file.connections) == 1:
             (only_name,) = conn_file.connections.keys()
             connection_urls[DEFAULT_CONNECTION] = conn_file.connections[only_name]
 
     if not connection_urls:
         raise ValueError(
-            "Error: No database URL provided. Set 'POSTGRES_DATABASE_URI', "
-            "'POSTGRES_DATABASES' (JSON map of name->url), 'POSTGRES_CONFIG_FILE' "
-            "(path to a JSON/YAML connections file), or pass a URL on the command line.",
+            "Error: No database connection configured. Set 'POSTGRES_CONFIG_FILE' "
+            "(path to a JSON/YAML connections file) or pass a URL on the command line.",
         )
 
     logger.info(f"Configured connections: {list_connection_names()} (extras open lazily on first use)")

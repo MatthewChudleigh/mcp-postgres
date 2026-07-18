@@ -135,14 +135,10 @@ You will now edit the `mcpServers` section of the configuration file.
         "run",
         "-i",
         "--rm",
-        "-e",
-        "POSTGRES_DATABASE_URI",
         "crystaldba/postgres-mcp",
+        "postgresql://username:password@localhost:5432/dbname",
         "--access-mode=unrestricted"
-      ],
-      "env": {
-        "POSTGRES_DATABASE_URI": "postgresql://username:password@localhost:5432/dbname"
-      }
+      ]
     }
   }
 }
@@ -162,11 +158,9 @@ The Postgres MCP Pro Docker image will automatically remap the hostname `localho
       "command": "uvx",
       "args": [
         "postgres-mcp",
+        "postgresql://username:password@localhost:5432/dbname",
         "--access-mode=unrestricted"
-      ],
-      "env": {
-        "POSTGRES_DATABASE_URI": "postgresql://username:password@localhost:5432/dbname"
-      }
+      ]
     }
   }
 }
@@ -181,11 +175,9 @@ The Postgres MCP Pro Docker image will automatically remap the hostname `localho
     "postgres": {
       "command": "postgres-mcp",
       "args": [
+        "postgresql://username:password@localhost:5432/dbname",
         "--access-mode=unrestricted"
-      ],
-      "env": {
-        "POSTGRES_DATABASE_URI": "postgresql://username:password@localhost:5432/dbname"
-      }
+      ]
     }
   }
 }
@@ -202,11 +194,9 @@ The Postgres MCP Pro Docker image will automatically remap the hostname `localho
       "args": [
         "run",
         "postgres-mcp",
+        "postgresql://username:password@localhost:5432/dbname",
         "--access-mode=unrestricted"
-      ],
-      "env": {
-        "POSTGRES_DATABASE_URI": "postgresql://username:password@localhost:5432/dbname"
-      }
+      ]
     }
   }
 }
@@ -215,42 +205,12 @@ The Postgres MCP Pro Docker image will automatically remap the hostname `localho
 
 ##### Connection URI
 
-Replace `postgresql://...` with your [Postgres database connection URI](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING-URIS).
-
-
-##### Multiple Database Connections
-
-In addition to the single `POSTGRES_DATABASE_URI`, you can configure a named map of connections via `POSTGRES_DATABASES`. This lets a single MCP server target multiple databases — either different databases on one Postgres server or different servers entirely.
-
-`POSTGRES_DATABASES` is a JSON object mapping a connection name to a connection URI:
-
-```json
-{
-  "mcpServers": {
-    "postgres": {
-      "command": "uvx",
-      "args": ["postgres-mcp", "--access-mode=restricted"],
-      "env": {
-        "POSTGRES_DATABASE_URI": "postgresql://user:pw@host/main",
-        "POSTGRES_DATABASES": "{\"prod\":\"postgresql://user:pw@host/prod\",\"analytics\":\"postgresql://user:pw@host2/analytics\"}"
-      }
-    }
-  }
-}
-```
-
-Behavior:
-
-- `POSTGRES_DATABASE_URI` (or the positional CLI argument) is registered as the `default` connection and is eagerly connected at startup.
-- Entries in `POSTGRES_DATABASES` are registered by name and connect lazily on first use.
-- If `POSTGRES_DATABASES` contains exactly one entry and `POSTGRES_DATABASE_URI` is not set, that single entry becomes the `default`.
-- Every tool accepts an optional `connection` argument naming the target — for example `connection: "analytics"`. When omitted, tools target the `default` connection, so existing single-database setups are unchanged.
-- A `list_connections` tool is exposed so the model can discover the configured names.
+Replace `postgresql://...` with your [Postgres database connection URI](https://www.postgresql.org/docs/current/libpq-connect.html#LIBPQ-CONNSTRING-URIS). Passing a single URI as the positional argument (shown above) registers it as the `default` connection. For more than one connection, use a config file instead (below).
 
 
 ##### Connections Config File
 
-For more than one connection, cramming an escaped JSON string into `POSTGRES_DATABASES` gets awkward. Instead, set `POSTGRES_CONFIG_FILE` to the path of a JSON or YAML file. It's a real file — comments allowed (in YAML), no JSON-in-a-string escaping — and it can live outside your committed MCP client config (keep it out of source control; it holds credentials).
+To target multiple databases from one MCP server — different databases on one Postgres server, or different servers entirely — set `POSTGRES_CONFIG_FILE` to the path of a JSON or YAML file. It's a real file — comments allowed (in YAML), no JSON-in-a-string escaping — and it can live outside your committed MCP client config (keep it out of source control; it holds credentials).
 
 ```json
 {
@@ -280,8 +240,10 @@ See [`examples/connections.example.yaml`](examples/connections.example.yaml) for
 Behavior:
 
 - The file may be JSON or YAML (JSON is valid YAML, so both parse the same way). A leading `~` and relative paths are resolved at startup, and any parse/validation error is reported then — not on first query.
-- The optional `default` key names the default connection. If it's omitted and the file has exactly one connection, that one becomes the default.
-- All three sources — `POSTGRES_DATABASE_URI`, `POSTGRES_DATABASES`, and `POSTGRES_CONFIG_FILE` — can be combined. When a connection name appears in more than one, the env vars win over the config file (precedence: `POSTGRES_DATABASE_URI` > `POSTGRES_DATABASES` > `POSTGRES_CONFIG_FILE`).
+- The optional `default` key names the default connection. If it's omitted and the file has exactly one connection, that one becomes the default. The `default` connection is eagerly connected at startup; named connections connect lazily on first use.
+- Every tool accepts an optional `connection` argument naming the target — for example `connection: "analytics"`. When omitted, tools target the `default` connection, so single-database setups are unchanged.
+- A `list_connections` tool is exposed so the model can discover the configured names.
+- A URL passed as the positional CLI argument becomes the `default`, overriding a `default` from the config file.
 
 
 ##### Access Mode
@@ -311,8 +273,8 @@ For example, with Docker run:
 
 ```bash
 docker run -p 8000:8000 \
-  -e POSTGRES_DATABASE_URI=postgresql://username:password@localhost:5432/dbname \
-  crystaldba/postgres-mcp --access-mode=unrestricted --transport=sse
+  crystaldba/postgres-mcp postgresql://username:password@localhost:5432/dbname \
+  --access-mode=unrestricted --transport=sse
 ```
 
 Then update your MCP client configuration to call the the MCP server.
